@@ -1,0 +1,144 @@
+;; Hot rule-pack slot + honest dual worldline helpers for M1/M2.
+;; ar:law / ar:shadow return (g bn bd fric). swap! / heal! are std/hot-strategy.
+;; fiber race helpers live in rules.aura; this file does not fake fiber_live.
+;; M0 does not load this file.
+
+(require "std/hot-strategy" all:)
+(require "std/string" all:)
+
+(define *heavy-body* "(lambda () (list 4 1 3 2))")
+(define *light-body* "(lambda () (list 1 2 3 1))")
+(define *bouncy-body* "(lambda () (list 1 3 4 0))")
+(define *main-body* *light-body*)
+(define *strategy-seeded* 0)
+(define *base-last* 0)
+(define *trial-last* 0)
+(define *propose-tag* "boot")
+
+(define *seed-src*
+  (string-append
+   "(define (ar:law) (list 1 2 3 1))\n"
+   "(define (ar:shadow) (list 1 2 3 1))\n"))
+
+(define (ar:strategy-seed!)
+  (if (= *strategy-seeded* 1)
+      (list #t "seed")
+      (let ((sc (try (set-code *seed-src*) (catch (e) e))))
+        (if (not (equal? sc #t))
+            (list #f "seed")
+            (begin
+              (eval-current)
+              (hot-strategy:register! "ar:law" *light-body*)
+              (set! *main-body* *light-body*)
+              (set! *strategy-seeded* 1)
+              (set! *race-backend* 0)
+              (set! *race-spawned* 0)
+              (set! *race-joined* 0)
+              (if (and (pair? (try (ar:law) (catch (e) #f)))
+                       (pair? (try (ar:shadow) (catch (e) #f))))
+                  (list #t "seed")
+                  (list #f "probe")))))))
+
+(define (ar:bad-body? s)
+  (or (string-contains? s "set!")
+      (string-contains? s "vector-set!")
+      (string-contains? s "display")
+      (string-contains? s "mutate")
+      (string-contains? s "eval")
+      (string-contains? s "load")
+      (string-contains? s "shell")
+      (string-contains? s "http")
+      (string-contains? s "ar:reset")
+      (string-contains? s "ar:tick")
+      (string-contains? s "ar:race")
+      (string-contains? s "fiber:")))
+
+(define (ar:body-ok? body)
+  (and (string? body)
+       (> (string-length body) 10)
+       (< (string-length body) 2000)
+       (string-prefix? body "(lambda")
+       (not (ar:bad-body? body))))
+
+(define (ar:pack-ok? p)
+  (and (pair? p)
+       (pair? (cdr p))
+       (pair? (cdr (cdr p)))
+       (pair? (cdr (cdr (cdr p))))
+       (null? (cdr (cdr (cdr (cdr p)))))
+       (number? (ar:pack-g p))
+       (number? (ar:pack-bn p))
+       (number? (ar:pack-bd p))
+       (number? (ar:pack-fric p))
+       (>= (ar:pack-g p) 0)
+       (> (ar:pack-bd p) 0)
+       (>= (ar:pack-bn p) 0)
+       (>= (ar:pack-fric p) 0)
+       (<= (ar:pack-g p) 16)
+       (<= (ar:pack-fric p) 16)
+       (<= (ar:pack-bn p) 32)
+       (<= (ar:pack-bd p) 32)))
+
+(define (ar:probe-law!)
+  (let ((v (try (ar:law) (catch (e) #f))))
+    (ar:pack-ok? v)))
+
+(define (ar:apply-law-params!)
+  (let ((p (ar:law)))
+    (set! *g* (ar:pack-g p))
+    (set! *bn* (ar:pack-bn p))
+    (set! *bd* (ar:pack-bd p))
+    (set! *fric* (+ (ar:pack-fric p) *fric-boost*))
+    p))
+
+(define (ar:live-tick! tag)
+  (ar:apply-law-params!)
+  (ar:tick! tag))
+
+;; Install a lambda string into ar:law. Does not touch ar:shadow.
+;; Gate reject leaves the slot alone. A bad probe heal!s the pre-swap snap.
+(define (ar:apply-body! body reason)
+  (let ((clean (if (string? body) (string-trim body) "")))
+    (cond
+      ((not (ar:body-ok? clean))
+       (display "GATE reject reason=gate")
+       (newline)
+       (list #f "gate"))
+      (#t
+       (let ((sw (hot-strategy:swap! "ar:law" clean reason)))
+         (if (not (and (pair? sw) (equal? (car sw) #t)))
+             (begin
+               (display "GATE reject reason=swap")
+               (newline)
+               (list #f "swap"))
+             (if (ar:probe-law!)
+                 (begin
+                   (display "SWAP name=ar:law tick=")
+                   (display (number->string *tick*))
+                   (display " reason=")
+                   (display reason)
+                   (newline)
+                   (list #t "swap"))
+                 (begin
+                   (hot-strategy:heal!)
+                   (display "HEAL name=ar:law tick=")
+                   (display (number->string *tick*))
+                   (display " reason=probe")
+                   (newline)
+                   (list #f "probe")))))))))
+
+(define (ar:sync-main!)
+  (hot-strategy:swap! "ar:shadow" *main-body* "shadow")
+  (hot-strategy:swap! "ar:law" *main-body* "choose")
+  *main-body*)
+
+(define (ar:pack-from-body body)
+  (let ((clean (if (string? body) (string-trim body) "")))
+    (if (not (ar:body-ok? clean))
+        #f
+        (let ((sw (hot-strategy:swap! "ar:law" clean "probe-pack")))
+          (if (not (and (pair? sw) (equal? (car sw) #t)))
+              #f
+              (let ((p (try (ar:law) (catch (e) #f))))
+                (hot-strategy:heal!)
+                (if (ar:pack-ok? p) p #f)))))))
