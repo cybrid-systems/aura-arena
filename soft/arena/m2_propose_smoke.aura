@@ -1,0 +1,114 @@
+;; Fixture propose. No HTTP. Gate, heal, DROP, KEEP.
+;; Horizon stays 48 so the scores match the M0 tape law.
+(load "/workspace/aura-arena/soft/arena/world.aura")
+(load "/workspace/aura-arena/soft/arena/rules.aura")
+(load "/workspace/aura-arena/soft/arena/propose.aura")
+
+(define *fail* 0)
+
+(define (expect tag got want)
+  (display tag)
+  (display "=")
+  (display (ar:nstr got))
+  (if (= got want)
+      (display " OK")
+      (begin
+        (display " WANT=")
+        (display (ar:nstr want))
+        (set! *fail* (+ *fail* 1))))
+  (newline)
+  got)
+
+(define (tag? r want)
+  (and (pair? r) (pair? (cdr r)) (equal? (car (cdr r)) want)))
+
+(define (pack= p g bn bd fric)
+  (and (ar:pack-ok? p)
+       (= (ar:pack-g p) g)
+       (= (ar:pack-bn p) bn)
+       (= (ar:pack-bd p) bd)
+       (= (ar:pack-fric p) fric)))
+
+(define (main)
+  (let ((seeded (ar:strategy-seed!)))
+    (if (not (and (pair? seeded) (equal? (car seeded) #t)))
+        (display "ARENA_M2_PROPOSE_FAIL seed\n")
+        (begin
+          (let ((bad (ar:propose-file!
+                      "/workspace/aura-arena/soft/arena/fixtures/bad.lambda")))
+            (if (not (tag? bad "propose_reject"))
+                (begin
+                  (display "REJECT_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (if (not (pack= (ar:law) 1 2 3 1))
+              (begin
+                (display "SLOT_FAIL reject")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (let ((ugly (ar:propose-file!
+                       "/workspace/aura-arena/soft/arena/fixtures/ugly.lambda")))
+            (if (not (tag? ugly "propose_heal"))
+                (begin
+                  (display "HEAL_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (if (not (pack= (ar:law) 1 2 3 1))
+              (begin
+                (display "SLOT_FAIL heal")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (let ((worse (ar:propose-file!
+                        "/workspace/aura-arena/soft/arena/fixtures/worse.lambda")))
+            (if (not (tag? worse "propose_drop"))
+                (begin
+                  (display "DROP_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (expect "WORSE_BASE" *base-last* 35000528)
+          (expect "WORSE_TRIAL" *trial-last* 8000423)
+          (if (not (pack= (ar:law) 1 2 3 1))
+              (begin
+                (display "SLOT_FAIL drop")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (if (not (string=? *main-body* *light-body*))
+              (begin
+                (display "MAIN_FAIL drop")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (let ((better (ar:propose-file!
+                         "/workspace/aura-arena/soft/arena/fixtures/better.lambda")))
+            (if (not (tag? better "propose_keep"))
+                (begin
+                  (display "KEEP_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (expect "BETTER_BASE" *base-last* 35000528)
+          (expect "BETTER_TRIAL" *trial-last* 48000674)
+          (expect "MAIN_SCORE" *main-score* 48000674)
+          (expect "LIVE_SCORE" (ar:live-score) 48000674)
+          (if (not (pack= (ar:law) 1 2 3 0))
+              (begin
+                (display "SLOT_FAIL keep")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (ar:stamp-world!)
+          (if (string=? *world-line* "fiber_live")
+              (if (not (and (> *race-backend* 0)
+                            (= *race-joined* *race-spawned*)
+                            (= *race-spawned* 4)))
+                  (begin
+                    (display "WORLD_FAIL")
+                    (newline)
+                    (set! *fail* (+ *fail* 1))))
+              (if (not (string=? *world-line* "host-sequential"))
+                  (begin
+                    (display "WORLD_FAIL")
+                    (newline)
+                    (set! *fail* (+ *fail* 1)))))
+          (if (= *fail* 0)
+              (display "ARENA_M2_PROPOSE_OK\n")
+              (display "ARENA_M2_PROPOSE_FAIL\n"))))))
+
+(main)
