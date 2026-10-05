@@ -1,0 +1,74 @@
+;; Propose → gate → race vs current main → KEEP or DROP/heal.
+;; Host writes a (lambda () (list g bn bd fric)) file. Soft does not speak HTTP.
+;; ar:shadow is the current main pack. ar:law is the trial.
+;; KEEP only when the trial score is strictly greater. A tie DROPs.
+
+(load "/workspace/aura-arena/soft/arena/hot.aura")
+
+(define (ar:propose-score! clean)
+  (let ((pair (ar:race-thunks!
+               (lambda () (ar:score-pack (ar:shadow)))
+               (lambda () (ar:score-pack (ar:law))))))
+    (let ((base (car pair))
+          (trial (car (cdr pair))))
+      (set! *base-last* base)
+      (set! *trial-last* trial)
+      (display "RACE base=")
+      (display (ar:nstr base))
+      (display " trial=")
+      (display (ar:nstr trial))
+      (newline)
+      (if (> trial base)
+          (begin
+            (set! *main-body* clean)
+            (set! *main-score* trial)
+            (set! *main-name* "ar:law")
+            (set! *keep-reason* "higher-score-stamp")
+            (set! *propose-tag* "propose_keep")
+            (display "KEEP reason=higher-score-stamp")
+            (newline)
+            (display "PROPOSE tag=propose_keep")
+            (newline)
+            (ar:stamp-pack! (ar:law) "ar:law")
+            (list #t "propose_keep"))
+          (begin
+            (hot-strategy:heal!)
+            (set! *drop-reason* "lower-score-rollback")
+            (set! *propose-tag* "propose_drop")
+            (display "HEAL name=ar:law reason=score")
+            (newline)
+            (display "DROP reason=lower-score-rollback")
+            (newline)
+            (display "PROPOSE tag=propose_drop")
+            (newline)
+            (list #f "propose_drop"))))))
+
+(define (ar:propose-body! body)
+  (let ((clean (if (string? body) (string-trim body) "")))
+    (let ((r (ar:apply-body! clean "propose")))
+      (cond
+        ((and (pair? r) (pair? (cdr r)) (equal? (car (cdr r)) "swap"))
+         (ar:propose-score! clean))
+        ((and (pair? r) (pair? (cdr r)) (equal? (car (cdr r)) "probe"))
+         (set! *propose-tag* "propose_heal")
+         (display "PROPOSE tag=propose_heal")
+         (newline)
+         (list #f "propose_heal"))
+        (#t
+         (set! *propose-tag* "propose_reject")
+         (display "PROPOSE tag=propose_reject")
+         (newline)
+         (list #f "propose_reject"))))))
+
+(define (ar:propose-file! path)
+  (ar:sync-main!)
+  (let ((body (try (read-file path) (catch (e) #f))))
+    (if (not (string? body))
+        (begin
+          (display "GATE reject reason=read")
+          (newline)
+          (set! *propose-tag* "propose_reject")
+          (display "PROPOSE tag=propose_reject")
+          (newline)
+          (list #f "propose_reject"))
+        (ar:propose-body! body))))
