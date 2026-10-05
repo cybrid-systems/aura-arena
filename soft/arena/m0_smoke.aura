@@ -1,0 +1,91 @@
+;; Dual rule-pack race. Prints KEEP/DROP and ARENA_M0_OK.
+;; fiber_live is accepted only when joins equal spawns and backend > 0.
+(load "/workspace/aura-arena/soft/arena/world.aura")
+(load "/workspace/aura-arena/soft/arena/rules.aura")
+
+(define *fail* 0)
+
+(define (expect tag got want)
+  (display tag)
+  (display "=")
+  (display (ar:nstr got))
+  (if (= got want)
+      (display " OK")
+      (begin
+        (display " WANT=")
+        (display (ar:nstr want))
+        (set! *fail* (+ *fail* 1))))
+  (newline)
+  got)
+
+(display "DIALECT=")
+(display (ar:dialect))
+(newline)
+
+(expect "HORIZON" *horizon* 48)
+(expect "SEED" *seed* 20261005)
+(expect "RNG" (ar:seed-step *seed*) 34567)
+(ar:race!)
+(ar:audit!)
+
+(expect "SCORE_HEAVY" *score-heavy* 8000423)
+(expect "SCORE_LIGHT" *score-light* 35000528)
+(expect "ALIVE_HEAVY" (ar:alive-of *score-heavy*) 8)
+(expect "ALIVE_LIGHT" (ar:alive-of *score-light*) 35)
+(expect "ENERGY_LIGHT" (ar:energy-of *score-light*) 528)
+(expect "KEEP_MID" *keep-mid* 2)
+(expect "DROP_MID" *drop-mid* 1)
+(expect "MAIN_MID" *main-mid* 2)
+(expect "MAIN_SCORE" *main-score* 35000528)
+(expect "LIVE_SCORE" *main-score* *score-light*)
+(expect "TICK" *tick* 35)
+(expect "ALIVE" *alive* 35)
+(expect "ENERGY" *energy* 528)
+(expect "X" *x* 60)
+(expect "Y" *y* 0)
+(expect "VX" *vx* 0)
+(expect "VY" *vy* 1)
+(expect "G" *g* 1)
+(expect "BN" *bn* 2)
+(expect "BD" *bd* 3)
+(expect "FRIC" *fric* 1)
+
+(if (string=? *world-line* "fiber_live")
+    (if (not (and (> *race-backend* 0)
+                  (> *race-spawned* 0)
+                  (= *race-joined* *race-spawned*)))
+        (begin
+          (display "WORLD_FAIL")
+          (newline)
+          (set! *fail* (+ *fail* 1))))
+    (if (not (string=? *world-line* "host-sequential"))
+        (begin
+          (display "WORLD_FAIL")
+          (newline)
+          (set! *fail* (+ *fail* 1)))))
+
+(if (not (and (> *score-light* *score-heavy*)
+              (= *keep-mid* 2)
+              (= *drop-mid* 1)
+              (string=? *main-name* "rules-light")
+              (string=? *keep-reason* "longer-survival-stamp")
+              (string=? *drop-reason* "shorter-survival-rollback")))
+    (begin
+      (display "KEEP_FAIL")
+      (newline)
+      (set! *fail* (+ *fail* 1))))
+
+;; Loser params must not be the main world.
+(if (or (= *g* 4) (= *fric* 2) (= *bn* 1))
+    (begin
+      (display "STAMP_FAIL")
+      (newline)
+      (set! *fail* (+ *fail* 1))))
+
+(if (= *fail* 0)
+    (begin
+      (display "ARENA_M0_OK")
+      (newline))
+    (begin
+      (display "ARENA_M0_FAIL")
+      (newline)))
