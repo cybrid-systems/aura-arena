@@ -142,3 +142,63 @@
     (set! *vy* (car (cdr (cdr (cdr (cdr (cdr (cdr st))))))))
     (set! *tick* *alive*)
     (car st)))
+
+;; Live tick path for M1 mid-run swap. M0 still uses ar:sim only.
+(define *dead* 0)
+(define *fric-boost* 0)
+
+(define (ar:reset!)
+  (let ((rng (ar:seed-step *seed*)))
+    (set! *x* 16)
+    (set! *y* 36)
+    (set! *vx* (+ 2 (modulo rng 3)))
+    (set! *vy* (modulo rng 5))
+    (set! *tick* 0)
+    (set! *alive* 0)
+    (set! *energy* 0)
+    (set! *dead* 0)
+    (set! *fric-boost* 0)
+    0))
+
+(define (ar:live-score)
+  (+ (* *alive* 1000000) *energy*))
+
+;; One in-play tick on the live ball using the current *g*/*bn*/*bd*/*fric*.
+;; Returns the new tick, or the stuck tick when dead. Does not retcon prior ticks.
+(define (ar:tick! tag)
+  (set! *slot-tag* tag)
+  (if (= *dead* 1)
+      *tick*
+      (let ((st (ar:step *x* *y* *vx* *vy* *g* *bn* *bd* *fric*)))
+        (if (= (ar:sdead st) 1)
+            (begin
+              (set! *dead* 1)
+              *tick*)
+            (begin
+              (set! *x* (ar:sx st))
+              (set! *y* (ar:sy st))
+              (set! *vx* (ar:svx st))
+              (set! *vy* (ar:svy st))
+              (set! *alive* (+ *alive* 1))
+              (set! *energy* (+ *energy* (ar:ske st)))
+              (set! *tick* (+ *tick* 1))
+              (if (= *tick* 8)
+                  (begin
+                    (set! *fric-boost* 1)
+                    (display "MUTATE tick=8 fric-boost=1 slot=")
+                    (display tag)
+                    (newline)))
+              (if (and (= (modulo *tick* 10) 0) (= *tick* 10))
+                  (ar:tape! *tick* st tag))
+              *tick*)))))
+
+(define (ar:pack-g p) (car p))
+(define (ar:pack-bn p) (car (cdr p)))
+(define (ar:pack-bd p) (car (cdr (cdr p))))
+(define (ar:pack-fric p) (car (cdr (cdr (cdr p)))))
+
+(define (ar:score-pack p)
+  (ar:score (ar:pack-g p) (ar:pack-bn p) (ar:pack-bd p) (ar:pack-fric p)))
+
+(define (ar:stamp-pack! p tag)
+  (ar:stamp! (ar:pack-g p) (ar:pack-bn p) (ar:pack-bd p) (ar:pack-fric p) tag))
