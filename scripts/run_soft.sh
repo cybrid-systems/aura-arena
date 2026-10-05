@@ -25,5 +25,10 @@ exec "${DOCKER[@]}" run --rm -i --entrypoint /usr/local/bin/gosu \
   -e AURA_PIPELINE_STRICT=0 \
   -e AURA_SANDBOX=off \
   -e AURA_BIN=/workspace/aura-grok/build/aura \
+  -e "ARENA_HORIZON=${ARENA_HORIZON:-}" \
+  -e "ARENA_BURN_ROUNDS=${ARENA_BURN_ROUNDS:-}" \
+  -e "ARENA_ROUND_DIR=${ARENA_ROUND_DIR:-}" \
+  -e "ARENA_PROPOSE_FILE=${ARENA_PROPOSE_FILE:-}" \
+  -e "ARENA_PROPOSE=${ARENA_PROPOSE:-}" \
   "${IMG}" \
   dev /usr/bin/stdbuf -oL -eL /workspace/aura-grok/build/aura "$SRC" "$@"
