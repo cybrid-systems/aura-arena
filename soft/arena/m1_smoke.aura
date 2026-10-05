@@ -1,0 +1,141 @@
+;; Mid-run hot-strategy swap/heal, then an honest dual race.
+;; Prints SWAP, HEAL, MUTATE, KEEP, DROP, and ARENA_M1_OK.
+;; fiber_live only if the one race joined both fibers. M0 is a different file.
+(load "/workspace/aura-arena/soft/arena/world.aura")
+(load "/workspace/aura-arena/soft/arena/rules.aura")
+(load "/workspace/aura-arena/soft/arena/hot.aura")
+
+(define *fail* 0)
+
+(define (expect tag got want)
+  (display tag)
+  (display "=")
+  (display (ar:nstr got))
+  (if (= got want)
+      (display " OK")
+      (begin
+        (display " WANT=")
+        (display (ar:nstr want))
+        (set! *fail* (+ *fail* 1))))
+  (newline)
+  got)
+
+(define (tag? r want)
+  (and (pair? r) (pair? (cdr r)) (equal? (car (cdr r)) want)))
+
+(define (pack= p g bn bd fric)
+  (and (ar:pack-ok? p)
+       (= (ar:pack-g p) g)
+       (= (ar:pack-bn p) bn)
+       (= (ar:pack-bd p) bd)
+       (= (ar:pack-fric p) fric)))
+
+(define (main)
+  (let ((seeded (ar:strategy-seed!)))
+    (if (not (and (pair? seeded) (equal? (car seeded) #t)))
+        (display "ARENA_M1_FAIL seed\n")
+        (begin
+          (ar:reset!)
+          (ar:apply-law-params!)
+          (let loop ((i 0))
+            (if (< i 10)
+                (begin
+                  (ar:live-tick! "ar:law")
+                  (loop (+ i 1)))))
+          (let ((bad (ar:apply-body!
+                      "(lambda () (begin (set! *tick* 9) (list 1 2 3 1)))"
+                      "bad")))
+            (if (not (tag? bad "gate"))
+                (begin
+                  (display "GATE_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (expect "TICK_PRE" *tick* 10)
+          (if (not (pack= (ar:law) 1 2 3 1))
+              (begin
+                (display "SLOT_FAIL pre")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (let ((sw (ar:apply-body! *bouncy-body* "mid-swap")))
+            (if (not (tag? sw "swap"))
+                (begin
+                  (display "SWAP_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (expect "TICK_SWAP" *tick* 10)
+          (if (not (pack= (ar:law) 1 3 4 0))
+              (begin
+                (display "SLOT_FAIL swap")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (let loop ((i 0))
+            (if (< i 5)
+                (begin
+                  (ar:live-tick! "ar:law")
+                  (loop (+ i 1)))))
+          (expect "TICK_CONT" *tick* 15)
+          (let ((ugly (ar:apply-body!
+                       "(lambda () (list 1 2))"
+                       "ugly")))
+            (if (not (tag? ugly "probe"))
+                (begin
+                  (display "HEAL_FAIL")
+                  (newline)
+                  (set! *fail* (+ *fail* 1)))))
+          (expect "TICK_HEAL" *tick* 15)
+          ;; Last good snap is the bouncy body, not the seed light.
+          (if (not (pack= (ar:law) 1 3 4 0))
+              (begin
+                (display "SLOT_FAIL heal")
+                (newline)
+                (set! *fail* (+ *fail* 1))))
+          (expect "FRIC_BOOST" *fric-boost* 1)
+          ;; Dual race is still heavy vs light on the pure sim path.
+          (set! *race-backend* 0)
+          (set! *race-spawned* 0)
+          (set! *race-joined* 0)
+          (set! *world-line* "host-sequential")
+          (let ((pair (ar:race-thunks!
+                       (lambda () (rules-heavy))
+                       (lambda () (rules-light)))))
+            (ar:decide! (car pair) (car (cdr pair))))
+          (ar:finish-world!)
+          (display "RACE heavy=")
+          (display (ar:nstr *score-heavy*))
+          (display " light=")
+          (display (ar:nstr *score-light*))
+          (newline)
+          (ar:stamp-world!)
+          (display "KEEP mid=")
+          (display (number->string *keep-mid*))
+          (display " reason=")
+          (display *keep-reason*)
+          (newline)
+          (display "DROP mid=")
+          (display (number->string *drop-mid*))
+          (display " reason=")
+          (display *drop-reason*)
+          (newline)
+          (expect "SCORE_HEAVY" *score-heavy* 8000423)
+          (expect "SCORE_LIGHT" *score-light* 35000528)
+          (expect "MAIN_SCORE" *main-score* 35000528)
+          (expect "KEEP_MID" *keep-mid* 2)
+          (expect "DROP_MID" *drop-mid* 1)
+          (if (string=? *world-line* "fiber_live")
+              (if (not (and (> *race-backend* 0)
+                            (> *race-spawned* 0)
+                            (= *race-joined* *race-spawned*)))
+                  (begin
+                    (display "WORLD_FAIL")
+                    (newline)
+                    (set! *fail* (+ *fail* 1))))
+              (if (not (string=? *world-line* "host-sequential"))
+                  (begin
+                    (display "WORLD_FAIL")
+                    (newline)
+                    (set! *fail* (+ *fail* 1)))))
+          (if (= *fail* 0)
+              (display "ARENA_M1_OK\n")
+              (display "ARENA_M1_FAIL\n"))))))
+
+(main)
