@@ -109,14 +109,31 @@ would use `higher-energy-stamp`. A full tie keeps heavy.
 
 | Path | Role |
 |------|------|
-| `soft/arena/world.aura` | box, integer step, score, tape |
+| `soft/arena/world.aura` | box, integer step, live tick, score, tape |
 | `soft/arena/rules.aura` | two packs, race, KEEP/DROP, honest world line |
+| `soft/arena/hot.aura` | `ar:law` hot-strategy seed / swap / heal |
+| `soft/arena/propose.aura` | propose gate / KEEP / DROP |
 | `soft/arena/m0_smoke.aura` | evidence, `ARENA_M0_OK` |
-| `docs/m0.md` | the scripted numbers |
-| `scripts/smoke_soft.sh` | docker tip binary |
+| `soft/arena/m1_smoke.aura` | evidence, `ARENA_M1_OK` |
+| `soft/arena/m2_propose_smoke.aura` | fixture propose, `ARENA_M2_PROPOSE_OK` |
+| `docs/m0.md` / `m1.md` / `m2.md` | scripted numbers |
+| `scripts/smoke_soft.sh` | M0 docker tip binary |
+| `scripts/smoke_m1.sh` | M1 evidence |
+| `scripts/smoke_m2.sh` | M2 fixture evidence |
+| `scripts/burn.sh` | multi-round burn |
 
 ## 中文
 
 产品是同一颗球上的两套物理规则赛。活得更久的 KEEP 进主世界，先粘死的
 DROP。Soft 拥有盒子和规则槽。M0 没有 C 视口。只有两条 fiber 都 join 到
 分数、且 backend > 0 时才印 `fiber_live`，否则是 `host-sequential`。
+
+## M1 / M2
+
+M1 registers `ar:law` as a real `std/hot-strategy` slot, swaps and heals
+mid-run, prints `MUTATE tick=8 fric-boost=1`, then races heavy vs light
+with the same honest `fiber_live` rule as M0. Detail: `docs/m1.md`.
+
+M2 gates a host-written `(lambda () (list g bn bd fric))` from MiniMax
+(`api.minimax.cn` only), KEEPs only on a strict score improvement, else
+DROP + `heal!`. Detail: `docs/m2.md`. No keys in the tree.
